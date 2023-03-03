@@ -1,0 +1,33 @@
+
+source activate thesis; cd mpc_use_case/three_party_mpc/protocol/distributed_launch/
+
+
+User:
+python protocol_launcher.py \
+--world_size 3 \
+--rank 0 \
+--address 127.0.0.1 \
+--port 12345 \
+--num_diagnoses 2 \
+--patients 11 \
+--output_folder /home/jovyan/mpc_use_case/three_party_mpc/user/data/
+
+Party1:
+python protocol_launcher.py \
+--world_size 3 \
+--rank 1 \
+--address 127.0.0.1 \
+--port 12345 \
+--num_diagnoses 2 \
+--party1_input /home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_tensors \
+--list_notes 11.pt
+
+Party2:
+python protocol_launcher.py \
+--world_size 3 \
+--rank 2 \
+--address 127.0.0.1 \
+--port 12345 \
+--num_diagnoses 2 \
+--party2_input /home/jovyan/mpc_use_case/three_party_mpc/party2_structured/data/convert_data_output \
+--lists_keywords knee_keywords_test.pt hip_keywords_test.pt
