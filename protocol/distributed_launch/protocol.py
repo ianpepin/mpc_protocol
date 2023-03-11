@@ -14,6 +14,10 @@ USER = 0
 PARTY1 = 1
 PARTY2 = 2
 
+DEVICE = "cpu"
+# DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# print("GPU Available:", torch.cuda.is_available())
+
 def run_protocol(num_diagnoses, patients, output_folder, party1_input, list_notes, party2_input, lists_keywords, threshold):
     start = time.time()
     rank = get_rank()
@@ -173,7 +177,7 @@ def create_results(num_diagnoses, patients, length_list_patients, rank_party):
     rank = get_rank()     
     for i in range(length_list_patients):  
         # Creates a tensor that has the number of possible diagnoses
-        results_patient = torch.empty(num_diagnoses)
+        results_patient = torch.empty(num_diagnoses, device=DEVICE)
         results.append(crypten.cryptensor(results_patient, src=rank_party))
     return results
 
@@ -286,7 +290,7 @@ def load_party1_data(input_of_party, tensor_of_lengths, rank_party):
                 input_embedding = torch.empty(1)
             barrier()
             # Encrypt the tensor and store it in the list of tensors
-            list_tensors.append(crypten.cryptensor(input_embedding, src=rank_party, broadcast_size=True))
+            list_tensors.append(crypten.cryptensor(input_embedding, src=rank_party, device=DEVICE, broadcast_size=True))
         # The encrypted tensors from the previous step are appended to this list, so that each "input file" has its own
         # list of embeddings
         list_encrypted_embeddings.append(list_tensors)
@@ -344,7 +348,7 @@ def load_party2_data(input_of_party, tensor_of_lengths, rank_party):
                     input_embedding = torch.empty(1)
                 barrier()
                 # Encrypt the tensor and store it in the list of tensors
-                list_tensors.append(crypten.cryptensor(input_embedding, src=rank_party, broadcast_size=True))
+                list_tensors.append(crypten.cryptensor(input_embedding, src=rank_party, device=DEVICE, broadcast_size=True))
             else:
                 # If the tensor has 2 or more elements
                 input_embedding_list = []
@@ -358,7 +362,7 @@ def load_party2_data(input_of_party, tensor_of_lengths, rank_party):
                         input_embedding = torch.empty(1)
                     barrier()
                     # Encrypt each tensor that corresponds to a word in the keyword, and store it in a list
-                    input_embedding_list.append(crypten.cryptensor(input_embedding, src=rank_party, broadcast_size=True))
+                    input_embedding_list.append(crypten.cryptensor(input_embedding, src=rank_party, device=DEVICE, broadcast_size=True))
                 barrier()
                 # Append this list to the rest of the tensors
                 list_tensors.append(input_embedding_list)
@@ -367,7 +371,7 @@ def load_party2_data(input_of_party, tensor_of_lengths, rank_party):
 
 # Writes the results of the computation to a file on the user's device. Other parties generate a temporary file and write
 # dummy data to it, but they dop not get the result
-# def write_results(results, patients, output_folder, rank_party):
+# def write_results(results, patients, output_"folder, rank_party):
 #     rank = get_rank()
 #     try:
 #         # Extract all results from the list of results, and write them for each patient in the input patient list of the user
