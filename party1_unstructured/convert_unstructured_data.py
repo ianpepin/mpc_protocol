@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[48]:
+# In[4]:
 
 
 import pickle
@@ -26,25 +26,24 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import unidecode
 from natsort import natsorted
-from math import sqrt
+import time
 
 
-# In[49]:
+# In[5]:
 
 
 # Paths of different files used in this script
 vectors_filename = "/home/jovyan/embeddings/BioWordVec_PubMed_MIMICIII_d200.vec.bin"
 model_filename = "/home/jovyan/embeddings/BioWordVec_PubMed_MIMICIII_d200.bin"
 
-deid_notes_path = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/deidentified_notes"
-oa_patients_combined_notes = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_notes"
-other_patients_combined_notes = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/other_patients_notes"
+deid_notes_path = "/home/jovyan/mpc_use_case/crypten_unstructured_data/data/deidentified_notes"
+oa_patients_combined_notes = "/home/jovyan/mpc_use_case/crypten_unstructured_data/data/oa_patients_notes/oa_patients"
+other_patients_combined_notes = "/home/jovyan/mpc_use_case/crypten_unstructured_data/data/other_patients_notes"
 
-oa_patients_tensors = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_tensors"
-oa_patients_encrypted_tensors = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_encrypted_tensors"
+oa_patients_tensors = "/home/jovyan/mpc_use_case/crypten_unstructured_data/data/oa_patients_tensors"
 
 
-# In[50]:
+# In[6]:
 
 
 # Loads the word embeddings from the vector binary file
@@ -52,7 +51,7 @@ bioword_vector = KeyedVectors.load_word2vec_format(vectors_filename, binary=True
 print("Vectors loaded")
 
 
-# In[51]:
+# In[7]:
 
 
 # Loads the BioWordVec model, which we can use to generate embeddings for OOV words
@@ -60,7 +59,7 @@ bioword_model = fasttext.load_model(model_filename)
 print("Model loaded")
 
 
-# In[52]:
+# In[8]:
 
 
 print("\nProcessing patients and their notes based on their diagnosis")
@@ -70,6 +69,7 @@ files = natsorted(os.listdir(deid_notes_path))
 all_demographic_nos_notes = set()
 # This is a list that contains the note IDs for each patient
 for file in files:
+    # print(file)
     demographic_no = int(file.split("-")[1].split(".")[0])
     all_demographic_nos_notes.add(demographic_no)
     
@@ -81,8 +81,10 @@ for file in files:
     list_of_files[demographic_no-1].append(note_id)
 print("Number of patients having patient notes:", len(all_demographic_nos_notes))
 
+# print(list_of_files
 
-# In[53]:
+
+# In[9]:
 
 
 #! -----------------------------------------------------------------------------------------
@@ -94,7 +96,7 @@ oa_patients = set()
 with open('/home/jovyan/mpc_use_case/structured_data/DxResearch.txt', 'r') as in_file:
     stripped = (line.strip() for line in in_file)
     lines = (line.split(",") for line in stripped if line)
-    with open('/home/jovyan/mpc_use_case/prototype/oaTypes/DxResearch.csv', 'w') as out_file:
+    with open('/home/jovyan/mpc_use_case/structured_data/DxResearch.csv', 'w') as out_file:
         writer = csv.writer(out_file)
         writer.writerows(lines)
 
@@ -102,7 +104,7 @@ with open('/home/jovyan/mpc_use_case/structured_data/DxResearch.txt', 'r') as in
 #TODO Structured Data
 #! -----------------------------------------------------------------------------------------
 # Fetching demographic_no of total patients and OA patients from the DxResearch table
-df = pd.read_csv("/home/jovyan/mpc_use_case/prototype/oaTypes/DxResearch.csv")
+df = pd.read_csv("/home/jovyan/mpc_use_case/structured_data/DxResearch.csv")
 # df.head()
 for index, row in df.iterrows():
     no = row['demographic_no']
@@ -121,7 +123,7 @@ oa_patients_with_notes = oa_patients.intersection(all_demographic_nos_notes)
 print("Patient IDs:", sorted(oa_patients_with_notes))
 
 
-# In[54]:
+# In[17]:
 
 
 # This function combines all the notes from all patients and moves the combined notes to another folder.
@@ -129,11 +131,15 @@ print("Patient IDs:", sorted(oa_patients_with_notes))
 def combine_files(files, oa_patients_with_notes, notes_folder, new_folder_name, flag):
     for file in files:
         demographic_no = file.split("-")[1].split(".")[0]
+        # for id_number in all_demographic_nos_notes:
+        #     if id_number == int(demographic_no):
         if flag == 0:
             if int(demographic_no) not in oa_patients_with_notes:
                 with open(os.path.join(notes_folder, file), 'r') as fr:
                     text = fr.read()
                     fr.close()
+                if not os.path.exists(new_folder_name):
+                    os.makedirs(new_folder_name)
                 with open(new_folder_name + '/' + demographic_no + ".txt", "a") as fw:
                     fw.write(text)
                     fw.write("\n")
@@ -143,16 +149,18 @@ def combine_files(files, oa_patients_with_notes, notes_folder, new_folder_name, 
                 with open(os.path.join(notes_folder, file), 'r') as fr:
                     text = fr.read()
                     fr.close()
+                if not os.path.exists(new_folder_name):
+                    os.makedirs(new_folder_name)
                 with open(new_folder_name + '/' + demographic_no + ".txt", "a") as fw:
                     fw.write(text)
                     fw.write("\n")
                     fw.close()
-                
-combine_files(files, oa_patients_with_notes, deid_notes_path, other_patients_combined_notes, flag=0)
-combine_files(files, oa_patients_with_notes, deid_notes_path, oa_patients_combined_notes, flag=1)
+                        
+# combine_files(files, oa_patients_with_notes, deid_notes_path, other_patients_combined_notes, flag=0)
+# combine_files(files, oa_patients_with_notes, deid_notes_path, oa_patients_combined_notes, flag=1)
 
 
-# In[55]:
+# In[11]:
 
 
 # This adds every individual word into a new list, and splits up strings that contain more than one word so that their
@@ -180,7 +188,7 @@ def create_embeddings(substrings):
     return vectors
 
 
-# In[56]:
+# In[12]:
 
 
 # This function is used to preprocess a clinical note. It removes any undesired symbols and stopwords, so that only words remain in the note
@@ -200,10 +208,11 @@ def preprocess(txt):
         if w not in stop_words and len(w) > 1:
             # stem_w = ps.stem(w)
             filtered_sentence.append(w)
-    return " ".join(filtered_sentence)
+    # return " ".join(filtered_sentence)
+    return filtered_sentence
 
 
-# In[57]:
+# In[13]:
 
 
 # Convert the word embeddings into tensors
@@ -215,16 +224,7 @@ def create_tensors(embeddings):
     return tensors
 
 
-# In[58]:
-
-
-# # This function creates pickle files that can be retrieved later in the MPC protocol
-# def create_file(filename, tensors):
-#     with open(filename, 'wb') as f:
-#         file = pickle.dump(tensors, f)
-
-
-# In[59]:
+# In[15]:
 
 
 # This function creates pickle files that can be retrieved later in the MPC protocol
@@ -233,7 +233,7 @@ def create_file(filename, tensors):
         torch.save(tensors, f)
 
 
-# In[60]:
+# In[16]:
 
 
 # For each patient, taking all the combined notes, extracting the words, then creating embeddings for each word
@@ -251,81 +251,16 @@ for notes_file in oa_files:
         fr.close()
     # Preprocess the note
     preprocessed_note = preprocess(note_data)
-    # Split the note into alist of individual words
-    list_preprocessed_note = preprocessed_note.split()
     # Create an embedding for each word
-    embeddings = create_embeddings(list_preprocessed_note)
+    embeddings = create_embeddings(preprocessed_note)
     # notes_embeddings.append(embeddings)
     note_tensors = create_tensors(embeddings)
     # all_tensors.append(note_tensors)
     # Save the tensors to a file    ** Might have to do this in the protocol itself
     create_file(os.path.join(oa_patients_tensors, str(oa_demographic_no) + ".pt"), note_tensors)
     # create_file(os.path.join(oa_patients_tensors, str(oa_demographic_no) + ".pkl"), note_tensors)
-
-
-# In[61]:
-
-
-# #! This creates encrypted tensors (in a .pth file)!!!!!!!!!
-
-# # Convert the word embeddings into tensors
-# def create_tensors(embeddings):
-#     tensors = []
-#     for key in embeddings:
-#         tensor = torch.Tensor(embeddings[key])
-#         encrypted_tensor = crypten.cryptensor(tensor)
-#         tensors.append(encrypted_tensor)
-#     return tensors
-
-# # For each patient, taking all the combined notes, extracting the words, then creating embeddings for each word
-# # After the embeddings are created, we can create CrypTen tensors and stored the tensors into a file for later use
-# oa_files = natsorted(os.listdir(oa_patients_combined_notes))
-# all_tensors = []
-# notes_embeddings = []
-
-# # For each patient in the folder
-# for notes_file in oa_files:
-#     oa_demographic_no = int(notes_file.split(".")[0])
-#     # print(oa_demographic_no)
-#     with open(os.path.join(oa_patients_combined_notes, notes_file), 'r') as fr:
-#         note_data = fr.read()
-#         fr.close()
-#     # Preprocess the note
-#     preprocessed_note = preprocess(note_data)
-#     # Split the note into alist of individual words
-#     list_preprocessed_note = preprocessed_note.split()
-#     # Create an embedding for each word
-#     embeddings = create_embeddings(list_preprocessed_note)
-#     notes_embeddings.append(embeddings)
-#     # Create a CrypTen tensor for each embedding
-#     note_tensors = create_tensors(embeddings)
-#     all_tensors.append(note_tensors)
-#     # Save the tensors to a file    ** Might have to do this in the protocol itself
-#     crypten.save(note_tensors, os.path.join(oa_patients_encrypted_tensors, str(oa_demographic_no) + ".pth"))
-#     # create_file(os.path.join(oa_patients_tensors, str(oa_demographic_no) + ".pkl"), note_tensors)
-
-
-# In[62]:
-
-
-list_embeddings = []
-test_embedding = torch.Tensor(bioword_model.get_word_vector("osteoarthritis"))
-list_embeddings.append(test_embedding)
-file = "/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/test_embedding.pt"
-torch.save(list_embeddings, file)
-print(len(list_embeddings))
-# test = crypten.load(file)
-# print(test)
-
-
-# In[63]:
-
-
-test = torch.load("/home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_tensors/4.pt")
-test2 = torch.load("/home/jovyan/mpc_use_case/three_party_mpc/party2_structured/data/convert_data_output/hip_keywords.pt")
-print(len(test))
-print(len(test2))
-
-print(test[0])
-print(test2[0])
+    print(oa_demographic_no)
+    print(len(preprocessed_note))
+    print(len(note_tensors))
+    print("\n")
 

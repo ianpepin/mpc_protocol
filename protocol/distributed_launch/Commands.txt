@@ -1,5 +1,5 @@
 
-source activate thesis; cd mpc_use_case/three_party_mpc/protocol/distributed_launch/
+source activate thesis; cd mpc_use_case/mpc_protocol/protocol/distributed_launch
 
 
 User:
@@ -9,7 +9,7 @@ python protocol_launcher.py \
 --address 127.0.0.1 \
 --port 12345 \
 --num_diagnoses 2 \
---patients 11 \
+--patients 135 \
 --output_folder /home/jovyan/mpc_use_case/three_party_mpc/user/data/
 
 Party1:
@@ -19,8 +19,8 @@ python protocol_launcher.py \
 --address 127.0.0.1 \
 --port 12345 \
 --num_diagnoses 2 \
---party1_input /home/jovyan/mpc_use_case/three_party_mpc/party1_unstructured/data/oa_patients_tensors \
---list_notes 11.pt
+--party1_input /home/jovyan/mpc_use_case/crypten_unstructured_data/data/oa_patients_tensors \
+--list_notes 135.pt
 
 Party2:
 python protocol_launcher.py \
@@ -29,5 +29,5 @@ python protocol_launcher.py \
 --address 127.0.0.1 \
 --port 12345 \
 --num_diagnoses 2 \
---party2_input /home/jovyan/mpc_use_case/three_party_mpc/party2_structured/data/convert_data_output \
---lists_keywords knee_keywords_test.pt hip_keywords_test.pt
+--party2_input /home/jovyan/mpc_use_case/mpc_protocol/party2_structured/test_folder \
+--lists_keywords hip_keywords_test.pt knee_keywords_test.pt

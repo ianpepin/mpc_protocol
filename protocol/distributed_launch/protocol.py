@@ -7,8 +7,6 @@ from torch.distributed import barrier   # Creates a "barrier", where parties hav
 from math import sqrt
 import os
 import time
-import datetime
-import tempfile
 import pickle
 
 # Ranks of each party
@@ -30,22 +28,19 @@ def run_protocol(num_diagnoses, patients, output_folder, party1_input, list_note
     list_notes_embeddings = get_embeddings(party1_input, patients_list, list_notes, PARTY1)
     # list_notes_embeddings = get_embeddings(party1_input, list_notes, PARTY1)
     length_notes = get_length(list_notes_embeddings, PARTY1)
-    encrypted_notes = load_party_data(list_notes_embeddings, length_notes, PARTY1)
+    encrypted_notes = load_party1_data(list_notes_embeddings, length_notes, PARTY1)
     
     # Load the keywords from party 2's file 
     list_keyword_embeddings = get_embeddings(party2_input, patients_list, lists_keywords, PARTY2)
     length_keywords = get_length(list_keyword_embeddings, PARTY2)
-    encrypted_keywords = load_party_data(list_keyword_embeddings, length_keywords, PARTY2)
-    print(length_keywords)
+    encrypted_keywords = load_party2_data(list_keyword_embeddings, length_keywords, PARTY2)
     
     # Main MPC protocol
-    count = 0
     list_diagnoses = []
     # Take each patient in the list of results
     for patient in range(len(patient_results)):
         patient_diagnoses = []
         # The index corresponds to the patient's note
-        notes = encrypted_notes[patient]
         for diagnosis in range(len(patient_results[patient])):
             patient_diagnoses.append(patient_results[patient][diagnosis])
         list_diagnoses.append(patient_diagnoses)
@@ -68,27 +63,50 @@ def run_protocol(num_diagnoses, patients, output_folder, party1_input, list_note
             keywords_diseases.append(keywords[keyword])
         list_keywords.append(keywords_diseases)
     
-    count = 0
+    
     for patient in range(len(patients_list)):
         # break_flag = False
         print("Patient ID:", patients_list[patient])
         note = list_notes[patient]
-        for word in note:
-            for diagnosis in range(len(list_keywords)):
-                for keyword in list_keywords[diagnosis]:
-                    # Compute the euclidean distance between the two tensors
-                    euclidean_distance = (sum((keyword - word).pow(2))).sqrt()
-                    # print("Euclidean distance:", euclidean_distance.get_plain_text())
-                    
-                    # Determine if there is a match, set match to 1 if there is, 0 otherwise
-                    match = crypten.where(euclidean_distance < threshold, 1, 0)
-                    
-                    # Change the value that represents the diagnosis to a 1 for a patient if there is a match, leave it as it is otherwise
-                    patient_results[patient][diagnosis] = crypten.where(match == 1, 1, patient_results[patient][diagnosis])
-                    count += 1
-                    print("Count:", count)
-                    
-                    #!#######################################################
+        for diagnosis in range(len(list_keywords)):
+            count = 0
+            for keyword in list_keywords[diagnosis]:
+                start_time_keyword = time.time()
+                # If the keyword is not a list (keyword is a single encrypted tensor)
+                if not isinstance(keyword, list):
+                    for word in note:
+                        euclidean_distance = (sum((keyword - word).pow(2))).sqrt()
+                        match = crypten.where(euclidean_distance < threshold, 1, 0)
+                        patient_results[patient][diagnosis] = crypten.where(match == 1, 1, patient_results[patient][diagnosis])
+                # Keyword contains two substrings
+                else:
+                    match_indexes = []
+                    for substring in range(len(keyword)):
+                        index_match = 0
+                        indexes = []
+                        for word in range(len(note)):
+                            euclidean_distance = (sum((keyword[substring] - note[word]).pow(2))).sqrt()
+                            # Determine if there is a match, set match to the index of the word in the note, otherwise set it to -10
+                            match = crypten.where(euclidean_distance < threshold, index_match, -10)
+                            indexes.append(match)
+                            index_match += 1
+                        match_indexes.append(indexes)
+                    # The first list represents the first substring in the keyword
+                    first_word = match_indexes[0]
+                    # Second substring in the keyword
+                    second_word = match_indexes[1]
+                    index = 0
+                    while index < (len(first_word) - 1):
+                        # If the difference in indexes between the first and secnod substrings is 1, this means they appeared back-to-back in the note, so patient has the diagnosis
+                        patient_results[patient][diagnosis] = crypten.where(abs(first_word[index] - second_word[index+1]) == 1, 1, patient_results[patient][diagnosis])
+                        index += 1
+                count += 1
+                print("Count keyword:", count)
+                end_time_keyword = time.time()
+                time_of_process_keyword = end_time_keyword - start_time_keyword
+                print("Time for keyword:", round(time_of_process_keyword, 2), "seconds\n")
+                
+    #!##############################################################################################################
             #         stop = break_computation(patient_results[patient][diagnosis].get_plain_text(dst=USER), USER)
             #         print(stop)
             #         if stop == 1:
@@ -98,10 +116,10 @@ def run_protocol(num_diagnoses, patients, output_folder, party1_input, list_note
             #         break
             # if break_flag:
             #     break
-                    #!#######################################################
+    #!##############################################################################################################
                     
-    # # Save the results on the User's device; can use it for a later computation(?)
-    # # crypten.save_from_party(results.get_plain_text(), user_input, src=USER)
+    # # # Save the results on the User's device; can use it for a later computation(?)
+    # # # crypten.save_from_party(results.get_plain_text(), user_input, src=USER)
     end = time.time()
     time_of_process = end - start
     print("Execution time:", round(time_of_process, 2), "seconds")
@@ -115,6 +133,8 @@ def get_rank():
     return comm.get().get_rank()
 
 
+# This function will break the for loop that checks if there is a match between the keywords and the words from the clinical
+# notes.
 def break_computation(result, rank_party):
     rank = get_rank()
     stop = torch.tensor(0)
@@ -126,7 +146,7 @@ def break_computation(result, rank_party):
     return stop
 
 
-
+# This function distributes the patient list to the other parties. This is assuming they are allowed to see the patient IDs.
 def distribute_patients(patients, rank_party):
     rank = get_rank()
     if rank == rank_party:
@@ -137,7 +157,7 @@ def distribute_patients(patients, rank_party):
     dist.broadcast(length_tensor, src=rank_party)
     
     if rank == rank_party:
-        print(patients)
+        # print(patients)
         patient_list = patients
     else:
         patient_list = [None] * length_tensor
@@ -243,7 +263,7 @@ def get_length(input_of_party, rank_party):
 
 # This loads the input of a party. It encrypts each tensor and stores it into a list.
 # Each input file will have a list of encrypted tensors for the computation
-def load_party_data(input_of_party, tensor_of_lengths, rank_party):
+def load_party1_data(input_of_party, tensor_of_lengths, rank_party):
     list_encrypted_embeddings = []
     rank = get_rank()
     for item in range(len(tensor_of_lengths.tolist())):
@@ -272,6 +292,78 @@ def load_party_data(input_of_party, tensor_of_lengths, rank_party):
         list_encrypted_embeddings.append(list_tensors)
     return list_encrypted_embeddings
 
+
+# This function loads the keywords from party 2. Since keywords may contain multiple words (e.g., "knee pain"), we have to account for that as well.
+# The function returns a list where each sub-list contains the secret shares of the keywords. If the keyword is made up of multiple words, the element
+# in the list_encrypted_keywords variable will be a list that contains the secret shares of each word in the keyword.
+def load_party2_data(input_of_party, tensor_of_lengths, rank_party):
+    list_encrypted_embeddings = []
+    rank = get_rank()
+    for item in range(len(tensor_of_lengths.tolist())):
+        list_tensors = []
+        if rank == rank_party:
+            # Load the list of embeddings
+            list_embeddings = torch.load(input_of_party[item])
+        else:
+            list_embeddings = []
+        # Convert the length of the list of embeddings into a tensor, where the correct party will broadcast its length
+        length_list_embeddings = torch.tensor([len(list_embeddings)])
+        barrier()
+        # The length of the list of keywords is broadcast to every party through a tensor
+        dist.broadcast(length_list_embeddings, src=rank_party)
+        
+        # This block counts the number of embeddings for each keyword (whether the keyword consists of one word or multiple words)
+        list_number_embeddings = []
+        for i in range(length_list_embeddings.item()):
+            if rank == rank_party:
+                # Extract a tensor
+                input_embedding = list_embeddings[i]
+                # If the keyword is a list of embeddings (more than one word)
+                if isinstance(input_embedding, list):
+                    list_number_embeddings.append(len(input_embedding))
+                else:
+                    list_number_embeddings.append(1)
+            else:
+                # Other parties will create a dummy tensor
+                input_embedding = torch.empty(1)
+                list_number_embeddings.append(len(input_embedding))
+        barrier()
+        tensor_list_num_embeddings = torch.tensor(list_number_embeddings)
+        # This tensor, that represents how many words are in each keyword, is broadcast to all parties
+        dist.broadcast(tensor_list_num_embeddings, src=rank_party)
+    
+        for index in range(len(tensor_list_num_embeddings.tolist())):
+            index_value = tensor_list_num_embeddings[index]
+            # If the keyword only has one element
+            if index_value.item() == 1:
+                if rank == rank_party:
+                    # Extract a tensor
+                    input_embedding = list_embeddings[index]
+                else:
+                    # Other parties will create a dummy tensor
+                    input_embedding = torch.empty(1)
+                barrier()
+                # Encrypt the tensor and store it in the list of tensors
+                list_tensors.append(crypten.cryptensor(input_embedding, src=rank_party, broadcast_size=True))
+            else:
+                # If the tensor has 2 or more elements
+                input_embedding_list = []
+                for index_embedding in range(index_value.item()):
+                    if rank == rank_party:
+                        # Extract a tensor
+                        input_embedding = list_embeddings[index][index_embedding]
+                        # print(input_embedding)
+                    else:
+                        # Other parties will create a dummy tensor
+                        input_embedding = torch.empty(1)
+                    barrier()
+                    # Encrypt each tensor that corresponds to a word in the keyword, and store it in a list
+                    input_embedding_list.append(crypten.cryptensor(input_embedding, src=rank_party, broadcast_size=True))
+                barrier()
+                # Append this list to the rest of the tensors
+                list_tensors.append(input_embedding_list)
+        list_encrypted_embeddings.append(list_tensors)
+    return list_encrypted_embeddings
 
 # Writes the results of the computation to a file on the user's device. Other parties generate a temporary file and write
 # dummy data to it, but they dop not get the result
